@@ -1,0 +1,33 @@
+CANDIDATURA SU MISURA — VERSIONE 2
+
+Funzioni:
+- Annuncio da URL o testo incollato
+- Matching score e requisiti coperti/gap
+- Scelta automatica template CV (ATS / Motion / Editorial-DTP)
+- Anteprima CV A4 con safe area corretta
+- Foto opzionale caricabile dalla webapp
+- Figma e Blender ESCLUSI dal profilo
+- Email destinatario estratta dall'annuncio quando disponibile
+- Invio da info@antoniofilippone.com via SMTP Aruba
+
+CONFIGURAZIONE ARUBA
+Nel server/Vercel aggiungere queste Environment Variables:
+SMTP_HOST=smtps.aruba.it
+SMTP_PORT=465
+SMTP_USER=info@antoniofilippone.com
+SMTP_PASSWORD=<password casella Aruba>
+MAIL_FROM=info@antoniofilippone.com
+
+NON mettere SMTP_PASSWORD nel file .env.example o nel repository GitHub.
+
+AVVIO LOCALE
+1. corepack enable
+2. pnpm install
+3. Copiare .env.example in .env.local e inserire la password SOLO sul proprio PC
+4. pnpm dev
+
+PDF
+Il pulsante “Salva PDF” apre la stampa del browser con layout A4 dedicato. Scegliere “Salva come PDF”.
+
+NOTA
+La route di invio email usa Node.js + nodemailer. Se il provider di hosting blocca connessioni SMTP in uscita, servirà passare a un provider email API mantenendo info@antoniofilippone.com come mittente verificato.

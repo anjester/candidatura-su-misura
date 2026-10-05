@@ -1,0 +1,14 @@
+CANDIDATURA SU MISURA - versione locale
+
+Requisiti: Node.js 22 o successivo e pnpm.
+
+1. Estrai lo ZIP.
+2. Apri il terminale nella cartella Candidatura_su_misura.
+3. Esegui: corepack enable
+4. Esegui: pnpm install
+5. Esegui: pnpm dev
+6. Apri l'indirizzo locale indicato dal terminale (di norma http://localhost:3000).
+
+L'app legge pagine HTML pubbliche e genera bozze con regole. Non usa un modello AI o una chiave API. Alcuni siti possono bloccare la lettura: incolla il testo dell'annuncio nel campo dedicato. Prima dell'invio controlla sempre i contenuti.
+
+Versione online privata: https://candidatura-su-misura-antonio.anjester.chatgpt.site
