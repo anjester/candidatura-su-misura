@@ -3,8 +3,8 @@ import { useRef, useState } from "react";
 import { CheckCircle2, Clipboard, FileDown, Link2, LoaderCircle, Mail, Play, Send, Sparkles, Upload } from "lucide-react";
 
 type Result={title:string;company:string;score:number;emails:string[];recipient:string;requirements:string[];missing:string[];cvTemplate:string;cvTitle:string;cvSummary:string;cvSkills:string[];letter:string;subject:string;note:string};
-type AgentJob={source:string;title:string;company:string;score:number;status:string;email:string|null;url:string;gaps:string[]};
-type AgentResult={ok?:boolean;mode?:string;found?:number;evaluated?:number;sent?:number;results?:AgentJob[];error?:string;details?:string};
+type AgentJob={source:string;title:string;company:string;score:number;status:string;band?:"top"|"review";email:string|null;url:string;gaps:string[]};
+type AgentResult={ok?:boolean;mode?:string;found?:number;evaluated?:number;top?:number;review?:number;skipped?:number;sent?:number;results?:AgentJob[];error?:string;details?:string};
 
 export default function Home(){
  const [url,setUrl]=useState("");const[pasted,setPasted]=useState("");const[tone,setTone]=useState("diretto");
@@ -33,16 +33,34 @@ export default function Home(){
        <div className="meta">
         <span>Modalità: <b>{agentResult.mode}</b></span>
         <span>Trovati: <b>{agentResult.found ?? 0}</b></span>
-        <span>Valutati: <b>{agentResult.evaluated ?? 0}</b></span>
+        <span>Analizzati: <b>{agentResult.evaluated ?? 0}</b></span>
+        <span>Top: <b>{agentResult.top ?? 0}</b></span>
+        <span>Da valutare: <b>{agentResult.review ?? 0}</b></span>
+        <span>Scartati: <b>{agentResult.skipped ?? 0}</b></span>
         <span>Inviati: <b>{agentResult.sent ?? 0}</b></span>
        </div>
-       {(agentResult.results?.length??0)>0&&<div style={{marginTop:12,display:"grid",gap:8}}>
-        {agentResult.results!.slice(0,8).map((j,i)=><div key={`${j.source}-${j.url}-${i}`} className="notice" style={{margin:0}}>
-          <b>{j.score}% · {j.title}</b>{j.company?` — ${j.company}`:""}<br/>
-          <span>{j.source} · {j.status}{j.email?` · ${j.email}`:""}</span><br/>
-          <a href={j.url} target="_blank" rel="noreferrer">Apri annuncio</a>
-        </div>)}
-       </div>}
+       {(agentResult.results?.length??0)>0&&<>
+        {(agentResult.results?.some(j=>j.band==="top")??false)&&<div style={{marginTop:16}}>
+         <strong style={{display:"block",marginBottom:8}}>TOP MATCH</strong>
+         <div style={{display:"grid",gap:8}}>
+          {agentResult.results!.filter(j=>j.band==="top").slice(0,10).map((j,i)=><div key={`top-${j.source}-${j.url}-${i}`} className="notice" style={{margin:0,borderLeft:"4px solid #d97706"}}>
+            <b>{j.score}% · {j.title}</b>{j.company?` — ${j.company}`:""}<br/>
+            <span>{j.source} · {j.status}{j.email?` · ${j.email}`:" · email non trovata"}</span><br/>
+            <a href={j.url} target="_blank" rel="noreferrer">Apri annuncio</a>
+          </div>)}
+         </div>
+        </div>}
+        {(agentResult.results?.some(j=>j.band==="review")??false)&&<div style={{marginTop:16}}>
+         <strong style={{display:"block",marginBottom:8}}>DA VALUTARE</strong>
+         <div style={{display:"grid",gap:8}}>
+          {agentResult.results!.filter(j=>j.band==="review").slice(0,12).map((j,i)=><div key={`review-${j.source}-${j.url}-${i}`} className="notice" style={{margin:0,opacity:.9}}>
+            <b>{j.score}% · {j.title}</b>{j.company?` — ${j.company}`:""}<br/>
+            <span>{j.source} · {j.status}{j.email?` · ${j.email}`:""}</span><br/>
+            <a href={j.url} target="_blank" rel="noreferrer">Apri annuncio</a>
+          </div>)}
+         </div>
+        </div>}
+       </>}
       </>}
     </div>}
    </div>
