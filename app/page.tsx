@@ -1,20 +1,53 @@
 "use client";
 import { useRef, useState } from "react";
-import { CheckCircle2, Clipboard, FileDown, Link2, LoaderCircle, Mail, Send, Sparkles, Upload } from "lucide-react";
+import { CheckCircle2, Clipboard, FileDown, Link2, LoaderCircle, Mail, Play, Send, Sparkles, Upload } from "lucide-react";
 
 type Result={title:string;company:string;score:number;emails:string[];recipient:string;requirements:string[];missing:string[];cvTemplate:string;cvTitle:string;cvSummary:string;cvSkills:string[];letter:string;subject:string;note:string};
+type AgentJob={source:string;title:string;company:string;score:number;status:string;email:string|null;url:string;gaps:string[]};
+type AgentResult={ok?:boolean;mode?:string;found?:number;evaluated?:number;sent?:number;results?:AgentJob[];error?:string};
 
 export default function Home(){
  const [url,setUrl]=useState("");const[pasted,setPasted]=useState("");const[tone,setTone]=useState("diretto");
  const[result,setResult]=useState<Result|null>(null);const[letter,setLetter]=useState("");const[subject,setSubject]=useState("");const[recipient,setRecipient]=useState("");
  const[loading,setLoading]=useState(false);const[sending,setSending]=useState(false);const[error,setError]=useState("");const[status,setStatus]=useState("");const[photo,setPhoto]=useState<string>("");const[withPhoto,setWithPhoto]=useState(false);const fileRef=useRef<HTMLInputElement>(null);
+ const[agentLoading,setAgentLoading]=useState(false);const[agentResult,setAgentResult]=useState<AgentResult|null>(null);
  async function analyze(e:React.FormEvent){e.preventDefault();setLoading(true);setError("");setStatus("");try{const r=await fetch("/api/analyze",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({url,pasted,tone})});const d=await r.json();if(!r.ok)throw new Error(d.error||"Impossibile analizzare l’annuncio.");setResult(d);setLetter(d.letter);setSubject(d.subject);setRecipient(d.recipient||"")}catch(e){setError(e instanceof Error?e.message:"Errore imprevisto.")}finally{setLoading(false)}}
  function loadPhoto(e:React.ChangeEvent<HTMLInputElement>){const f=e.target.files?.[0];if(!f)return;const reader=new FileReader();reader.onload=()=>{setPhoto(String(reader.result));setWithPhoto(true)};reader.readAsDataURL(f)}
  async function copy(){await navigator.clipboard.writeText(subject+"\n\n"+letter);setStatus("Testo copiato negli appunti.")}
  async function send(){setSending(true);setError("");setStatus("");try{const r=await fetch("/api/send",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({to:recipient,subject,message:letter,cv:result})});const d=await r.json();if(!r.ok)throw new Error(d.error||"Invio non riuscito.");setStatus(`Email inviata a ${recipient}.`)}catch(e){setError(e instanceof Error?e.message:"Invio non riuscito.")}finally{setSending(false)}}
+ async function runAgent(){setAgentLoading(true);setAgentResult(null);setError("");try{const r=await fetch("/api/agent/manual-run",{method:"POST",cache:"no-store"});const d=await r.json();setAgentResult(d);if(!r.ok)throw new Error(d.error||"Esecuzione agente non riuscita.")}catch(e){setError(e instanceof Error?e.message:"Esecuzione agente non riuscita.")}finally{setAgentLoading(false)}}
  function printCV(){window.print()}
  return <main className="shell">
   <header><div className="brand"><span className="logo">af.</span><div><strong>Candidatura su misura</strong><small>Antonio Filippone · CV & Application Engine</small></div></div><span className="top-note">ATS · CV · EMAIL</span></header>
+
+  <aside className="profile" style={{marginBottom:18,alignItems:"flex-start"}}>
+   <span>AI</span>
+   <div style={{width:"100%"}}>
+    <strong>Job Agent automatico</strong>
+    <p>Ricerca Adzuna + Jooble, deduplica su Supabase e valutazione delle offerte. In modalità <b>review</b> non invia candidature.</p>
+    <button type="button" className="primary" onClick={runAgent} disabled={agentLoading} style={{width:"auto",marginTop:10}}>
+     {agentLoading?<><LoaderCircle size={18} className="spin"/>Eseguo ricerca…</>:<><Play size={18}/>Esegui agente ora</>}
+    </button>
+    {agentResult&&<div style={{marginTop:14}}>
+      {agentResult.error?<p className="error">{agentResult.error}</p>:<>
+       <div className="meta">
+        <span>Modalità: <b>{agentResult.mode}</b></span>
+        <span>Trovati: <b>{agentResult.found ?? 0}</b></span>
+        <span>Valutati: <b>{agentResult.evaluated ?? 0}</b></span>
+        <span>Inviati: <b>{agentResult.sent ?? 0}</b></span>
+       </div>
+       {(agentResult.results?.length??0)>0&&<div style={{marginTop:12,display:"grid",gap:8}}>
+        {agentResult.results!.slice(0,8).map((j,i)=><div key={`${j.source}-${j.url}-${i}`} className="notice" style={{margin:0}}>
+          <b>{j.score}% · {j.title}</b>{j.company?` — ${j.company}`:""}<br/>
+          <span>{j.source} · {j.status}{j.email?` · ${j.email}`:""}</span><br/>
+          <a href={j.url} target="_blank" rel="noreferrer">Apri annuncio</a>
+        </div>)}
+       </div>}
+      </>}
+    </div>}
+   </div>
+  </aside>
+
   <div className="workspace">
    <section className="panel input"><span className="eyebrow">01 / ANNUNCIO</span><h1>Un annuncio entra. Una candidatura mirata esce.</h1><p className="intro">Inserisci il link oppure incolla il testo. Il sistema seleziona ciò che è realmente coerente con il tuo profilo e prepara CV, messaggio e destinatario.</p>
     <form onSubmit={analyze}><label>Link dell’annuncio</label><div className="url"><Link2 size={18}/><input type="url" placeholder="https://..." value={url} onChange={e=>setUrl(e.target.value)}/></div><div className="divider">oppure</div><label>Testo dell’annuncio</label><textarea className="ad" value={pasted} onChange={e=>setPasted(e.target.value)} placeholder="Incolla descrizione, requisiti e riferimenti..."/><div className="choices"><div><label>Tono</label><select value={tone} onChange={e=>setTone(e.target.value)}><option value="diretto">Diretto e professionale</option><option value="elegante">Elegante</option><option value="caldo">Personale</option></select></div><div><label>Foto CV</label><button type="button" className="secondary" onClick={()=>fileRef.current?.click()}><Upload size={16}/>{photo?"Cambia foto":"Carica foto"}</button><input ref={fileRef} type="file" accept="image/*" hidden onChange={loadPhoto}/></div></div>
