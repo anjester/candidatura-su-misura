@@ -7,6 +7,7 @@ export const maxDuration = 60;
 type StrictMeta = {
   strongRole: boolean;
   hardNegative: boolean;
+  juniorLike: boolean;
   skills: number;
   autoEligible: boolean;
 };
@@ -37,6 +38,7 @@ const STRONG_ROLES = [
   /compositor/i,
   /3d\s*artist/i,
   /3d\s*designer/i,
+  /content\s*creator/i,
 ];
 
 const HARD_NEGATIVE_ROLES = [
@@ -62,6 +64,16 @@ const HARD_NEGATIVE_ROLES = [
   /programmat/i,
 ];
 
+const JUNIOR_OR_TRAINING = [
+  /\bjunior\b/i,
+  /\bjr\.?\b/i,
+  /\bintern(ship)?\b/i,
+  /\bstage\b/i,
+  /\btirocin/i,
+  /\bapprendistat/i,
+  /\btrainee\b/i,
+];
+
 const CORE_SKILLS = [
   /after\s*effects/i,
   /\bindesign\b/i,
@@ -80,6 +92,8 @@ const CORE_SKILLS = [
   /brochure/i,
   /manualistic/i,
   /adobe/i,
+  /visual\s*design/i,
+  /content\s*creation/i,
 ];
 
 const EXCLUDED_PROFILE_SKILLS = [/\bfigma\b/i, /\bblender\b/i];
@@ -108,7 +122,13 @@ function strictEvaluate(base: EvaluatedJob): StrictEvaluatedJob {
     STRONG_ROLES.some((r) => r.test(text));
 
   const hardNegative = HARD_NEGATIVE_ROLES.some((r) => r.test(title));
-  const skills = CORE_SKILLS.reduce((n, r) => n + (r.test(text) ? 1 : 0), 0);
+  const juniorLike = JUNIOR_OR_TRAINING.some((r) => r.test(title));
+
+  const skills = CORE_SKILLS.reduce(
+    (n, r) => n + (r.test(text) ? 1 : 0),
+    0
+  );
+
   const excludedSkills = EXCLUDED_PROFILE_SKILLS.reduce(
     (n, r) => n + (r.test(text) ? 1 : 0),
     0
@@ -130,7 +150,16 @@ function strictEvaluate(base: EvaluatedJob): StrictEvaluatedJob {
     score -= Math.min(10, excludedSkills * 5);
   }
 
-  const autoEligible = strongRole && !hardNegative && skills >= 2;
+  if (juniorLike) {
+    gaps.push("Ruolo Junior/Intern/Stage: escluso dall'invio automatico");
+    score = Math.min(score - 25, 69);
+  }
+
+  const autoEligible =
+    strongRole &&
+    !hardNegative &&
+    !juniorLike &&
+    skills >= 2;
 
   if (!autoEligible) score = Math.min(score, 77);
   if (hardNegative && !strongRole) score = Math.min(score, 64);
@@ -144,6 +173,7 @@ function strictEvaluate(base: EvaluatedJob): StrictEvaluatedJob {
     strict: {
       strongRole,
       hardNegative,
+      juniorLike,
       skills,
       autoEligible,
     },
@@ -152,7 +182,10 @@ function strictEvaluate(base: EvaluatedJob): StrictEvaluatedJob {
 
 function crossSourceKey(item: Job) {
   const title = normalize(item.title)
-    .replace(/\b(senior|junior|expert|remote|remoto|m f d|m\/f\/d)\b/g, "")
+    .replace(
+      /\b(senior|junior|jr|expert|remote|remoto|intern|internship|stage|m f d|m\/f\/d)\b/g,
+      ""
+    )
     .replace(/\s+/g, " ")
     .trim();
 
@@ -237,7 +270,12 @@ export async function POST() {
       .map((job) => strictEvaluate(evaluate(job)))
       .sort((a, b) => b.score - a.score);
 
-    const results: StrictEvaluatedJob[] = [];
+    const results: Array<{
+      job: StrictEvaluatedJob;
+      status: string;
+      note: string;
+    }> = [];
+
     let sent = 0;
 
     for (const candidate of unique.slice(0, 50)) {
@@ -274,7 +312,7 @@ export async function POST() {
           candidate.description
         );
       } catch {
-        // Continua con la descrizione della sorgente.
+        // Continua con la descrizione originale.
       }
 
       const recheckJob: Job = {
@@ -289,10 +327,7 @@ export async function POST() {
         salary: candidate.salary,
       };
 
-      const evaluated: StrictEvaluatedJob = strictEvaluate(
-        evaluate(recheckJob)
-      );
-
+      const evaluated = strictEvaluate(evaluate(recheckJob));
       evaluated.email = enriched.email;
 
       let status =
@@ -360,26 +395,28 @@ export async function POST() {
         );
       }
 
-      results.push(evaluated);
+      results.push({ job: evaluated, status, note });
     }
 
     const visibleResults = results
-      .filter((x) => x.score >= 78 && x.strict.autoEligible)
+      .filter(
+        ({ job, status }) =>
+          status !== "skipped" &&
+          job.score >= 78 &&
+          job.strict.autoEligible
+      )
       .slice(0, 20)
-      .map((x) => ({
-        source: x.source,
-        title: x.title,
-        company: x.company,
-        location: x.location,
-        score: x.score,
-        status:
-          x.score >= autoThreshold && !x.email
-            ? "needs_manual"
-            : "review",
-        email: x.email || null,
-        url: x.url,
-        gaps: x.gaps,
-        strict: x.strict,
+      .map(({ job, status }) => ({
+        source: job.source,
+        title: job.title,
+        company: job.company,
+        location: job.location,
+        score: job.score,
+        status,
+        email: job.email || null,
+        url: job.url,
+        gaps: job.gaps,
+        strict: job.strict,
       }));
 
     return NextResponse.json({
