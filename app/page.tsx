@@ -4,7 +4,7 @@ import { CheckCircle2, Clipboard, FileDown, Link2, LoaderCircle, Mail, Play, Sen
 
 type Result={title:string;company:string;score:number;emails:string[];recipient:string;requirements:string[];missing:string[];cvTemplate:string;cvTitle:string;cvSummary:string;cvSkills:string[];letter:string;subject:string;note:string};
 type AgentJob={source:string;title:string;company:string;score:number;status:string;email:string|null;url:string;gaps:string[]};
-type AgentResult={ok?:boolean;mode?:string;found?:number;evaluated?:number;sent?:number;results?:AgentJob[];error?:string};
+type AgentResult={ok?:boolean;mode?:string;found?:number;evaluated?:number;sent?:number;results?:AgentJob[];error?:string;details?:string};
 
 export default function Home(){
  const [url,setUrl]=useState("");const[pasted,setPasted]=useState("");const[tone,setTone]=useState("diretto");
@@ -29,7 +29,7 @@ export default function Home(){
      {agentLoading?<><LoaderCircle size={18} className="spin"/>Eseguo ricerca…</>:<><Play size={18}/>Esegui agente ora</>}
     </button>
     {agentResult&&<div style={{marginTop:14}}>
-      {agentResult.error?<p className="error">{agentResult.error}</p>:<>
+      {agentResult.error?<div><p className="error">{agentResult.error}</p>{agentResult.details&&<pre style={{whiteSpace:"pre-wrap",marginTop:8,fontSize:12,lineHeight:1.4}}>{agentResult.details}</pre>}</div>:<>
        <div className="meta">
         <span>Modalità: <b>{agentResult.mode}</b></span>
         <span>Trovati: <b>{agentResult.found ?? 0}</b></span>
