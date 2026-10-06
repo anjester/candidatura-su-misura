@@ -46,5 +46,5 @@ export async function saveJob(job: EvaluatedJob, status: string, recipient?: str
 }
 
 function headers(key: string) {
-  return { apikey: key, Authorization: `Bearer ${key}` };
+  return { apikey: key };
 }
