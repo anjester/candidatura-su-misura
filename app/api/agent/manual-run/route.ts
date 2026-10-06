@@ -270,6 +270,12 @@ export async function POST() {
       .map((job) => strictEvaluate(evaluate(job)))
       .sort((a, b) => b.score - a.score);
 
+    // Limita il lavoro "pesante" ai candidati più promettenti per evitare
+    // timeout su Vercel Hobby.
+    const candidates = unique
+      .filter((x) => x.strict.strongRole && !x.strict.hardNegative && x.score >= 68)
+      .slice(0, 15);
+
     const results: Array<{
       job: StrictEvaluatedJob;
       status: string;
@@ -278,7 +284,7 @@ export async function POST() {
 
     let sent = 0;
 
-    for (const candidate of unique.slice(0, 50)) {
+    for (const candidate of candidates) {
       try {
         if (await alreadySeen(candidate.source, candidate.sourceId)) continue;
 
@@ -306,13 +312,15 @@ export async function POST() {
         email: undefined,
       };
 
-      try {
-        enriched = await enrichFromJobPage(
-          candidate.url,
-          candidate.description
-        );
-      } catch {
-        // Continua con la descrizione originale.
+      if (candidate.score >= 72) {
+        try {
+          enriched = await enrichFromJobPage(
+            candidate.url,
+            candidate.description
+          );
+        } catch {
+          // Continua con la descrizione originale.
+        }
       }
 
       const recheckJob: Job = {
@@ -434,6 +442,7 @@ export async function POST() {
       mode,
       found: raw.length,
       unique: unique.length,
+      candidates: candidates.length,
       adzuna: adzunaJobs.length,
       jooble: joobleJobs.length,
       evaluated: results.length,
