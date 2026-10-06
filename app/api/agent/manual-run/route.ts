@@ -331,9 +331,11 @@ export async function POST() {
       evaluated.email = enriched.email;
 
       let status =
-        evaluated.score >= 78 && evaluated.strict.autoEligible
-          ? "review"
-          : "skipped";
+        evaluated.score >= 88 && evaluated.strict.autoEligible
+          ? "top"
+          : evaluated.score >= 72 && evaluated.strict.strongRole
+            ? "review"
+            : "skipped";
 
       let note = evaluated.gaps.join(", ");
 
@@ -376,6 +378,11 @@ export async function POST() {
         status = "needs_manual";
         note =
           "Compatibilità alta, ma nessuna email pubblica verificabile trovata.";
+      } else if (
+        status === "top" &&
+        mode === "review"
+      ) {
+        status = "top";
       }
 
       try {
@@ -399,13 +406,8 @@ export async function POST() {
     }
 
     const visibleResults = results
-      .filter(
-        ({ job, status }) =>
-          status !== "skipped" &&
-          job.score >= 78 &&
-          job.strict.autoEligible
-      )
-      .slice(0, 20)
+      .filter(({ status }) => status !== "skipped")
+      .slice(0, 30)
       .map(({ job, status }) => ({
         source: job.source,
         title: job.title,
@@ -413,11 +415,19 @@ export async function POST() {
         location: job.location,
         score: job.score,
         status,
+        band:
+          job.score >= 88 && job.strict.autoEligible
+            ? "top"
+            : "review",
         email: job.email || null,
         url: job.url,
         gaps: job.gaps,
         strict: job.strict,
       }));
+
+    const topCount = visibleResults.filter((x) => x.band === "top").length;
+    const reviewCount = visibleResults.filter((x) => x.band === "review").length;
+    const skippedCount = results.filter(({ status }) => status === "skipped").length;
 
     return NextResponse.json({
       ok: true,
@@ -427,7 +437,9 @@ export async function POST() {
       adzuna: adzunaJobs.length,
       jooble: joobleJobs.length,
       evaluated: results.length,
-      shortlisted: visibleResults.length,
+      top: topCount,
+      review: reviewCount,
+      skipped: skippedCount,
       sent,
       results: visibleResults,
     });
