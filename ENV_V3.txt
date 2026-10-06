@@ -1,0 +1,21 @@
+# Fonti lavoro
+ADZUNA_APP_ID=
+ADZUNA_APP_KEY=
+JOOBLE_API_KEY=
+
+# Agente
+AGENT_MODE=review
+AUTO_SEND_THRESHOLD=85
+MAX_AUTO_SEND_PER_RUN=3
+CRON_SECRET=
+
+# Supabase (necessario prima di AGENT_MODE=auto)
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+
+# Aruba (gia presenti nel progetto V2)
+SMTP_HOST=smtps.aruba.it
+SMTP_PORT=465
+SMTP_USER=info@antoniofilippone.com
+SMTP_PASSWORD=
+MAIL_FROM=info@antoniofilippone.com
