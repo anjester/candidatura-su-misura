@@ -80,7 +80,7 @@ export async function POST() {
 
       let enriched = {
         text: candidate.description || "",
-        email: null as string | null,
+        email: undefined as string | undefined,
       };
 
       try {
@@ -93,7 +93,7 @@ export async function POST() {
         // la descrizione fornita dalla sorgente.
         enriched = {
           text: candidate.description || "",
-          email: null,
+          email: undefined,
         };
       }
 
