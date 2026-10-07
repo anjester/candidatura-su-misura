@@ -49,7 +49,7 @@ export default function Home(){
         <span>Top: <b>{agentResult.top ?? 0}</b></span>
         <span>Da valutare: <b>{agentResult.review ?? 0}</b></span>
         <span>Scartati: <b>{agentResult.skipped ?? 0}</b></span>
-        <span>Inviati: <b>{agentResult.sent ?? 0}</b></span>
+        <span>Mail inviate: <b>{agentResult.sent ?? 0}</b></span>
        </div>
        {agentResult.message&&<p className="notice" style={{marginTop:10}}>{agentResult.message}</p>}
        {(agentResult.results?.length??0)>0&&<>
