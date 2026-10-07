@@ -10,7 +10,7 @@ export default function Home(){
  const [url,setUrl]=useState("");const[pasted,setPasted]=useState("");const[tone,setTone]=useState("diretto");
  const[result,setResult]=useState<Result|null>(null);const[letter,setLetter]=useState("");const[subject,setSubject]=useState("");const[recipient,setRecipient]=useState("");
  const[loading,setLoading]=useState(false);const[sending,setSending]=useState(false);const[error,setError]=useState("");const[status,setStatus]=useState("");const[photo,setPhoto]=useState<string>("");const[withPhoto,setWithPhoto]=useState(false);const fileRef=useRef<HTMLInputElement>(null);
- const[agentLoading,setAgentLoading]=useState(false);const[agentMode,setAgentMode]=useState<"normal"|"reanalyze">("normal");const[agentResult,setAgentResult]=useState<AgentResult|null>(null);
+ const[agentLoading,setAgentLoading]=useState(false);const[agentMode,setAgentMode]=useState<"normal"|"reanalyze">("normal");const[agentResult,setAgentResult]=useState<AgentResult|null>(null);const[testSending,setTestSending]=useState(false);const[testResult,setTestResult]=useState<any>(null);
  async function analyze(e:React.FormEvent){e.preventDefault();setLoading(true);setError("");setStatus("");try{const r=await fetch("/api/analyze",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({url,pasted,tone})});const d=await r.json();if(!r.ok)throw new Error(d.error||"Impossibile analizzare l’annuncio.");setResult(d);setLetter(d.letter);setSubject(d.subject);setRecipient(d.recipient||"")}catch(e){setError(e instanceof Error?e.message:"Errore imprevisto.")}finally{setLoading(false)}}
  function loadPhoto(e:React.ChangeEvent<HTMLInputElement>){const f=e.target.files?.[0];if(!f)return;const reader=new FileReader();reader.onload=()=>{setPhoto(String(reader.result));setWithPhoto(true)};reader.readAsDataURL(f)}
  async function copy(){await navigator.clipboard.writeText(subject+"\n\n"+letter);setStatus("Testo copiato negli appunti.")}
@@ -26,13 +26,17 @@ export default function Home(){
     <strong>Job Agent automatico</strong>
     <p>Ricerca Adzuna + Jooble, deduplica su Supabase e valutazione delle offerte. In modalità <b>review</b> non invia candidature.</p>
     <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:10}}>
-     <button type="button" className="primary" onClick={()=>runAgent(false)} disabled={agentLoading} style={{width:"auto",marginTop:0}}>
+     <button type="button" className="primary" onClick={()=>runAgent(false)} disabled={agentLoading||testSending} style={{width:"auto",marginTop:0}}>
       {agentLoading&&agentMode==="normal"?<><LoaderCircle size={18} className="spin"/>Eseguo ricerca…</>:<><Play size={18}/>Esegui agente ora</>}
      </button>
-     <button type="button" className="secondary" onClick={()=>runAgent(true)} disabled={agentLoading} style={{width:"auto"}}>
+     <button type="button" className="secondary" onClick={()=>runAgent(true)} disabled={agentLoading||testSending} style={{width:"auto"}}>
       {agentLoading&&agentMode==="reanalyze"?<><LoaderCircle size={18} className="spin"/>Rianalizzo…</>:<>Rianalizza ultimi annunci</>}
      </button>
+     <button type="button" className="secondary" onClick={sendTestApplication} disabled={agentLoading||testSending} style={{width:"auto"}}>
+      {testSending?<><LoaderCircle size={18} className="spin"/>Invio test…</>:<>Invia candidatura di test</>}
+     </button>
     </div>
+    {testResult?.ok&&<p className="notice" style={{marginTop:10}}>Test inviato a <b>{testResult.testRecipient}</b>. Simulazione: <b>{testResult.title}</b> — {testResult.company} ({testResult.score}%). Destinatario reale previsto: <b>{testResult.realRecipient}</b>.</p>}
     {agentResult&&<div style={{marginTop:14}}>
       {agentResult.error?<div><p className="error">{agentResult.error}</p>{agentResult.details&&<pre style={{whiteSpace:"pre-wrap",marginTop:8,fontSize:12,lineHeight:1.4}}>{agentResult.details}</pre>}</div>:<>
        <div className="meta">
