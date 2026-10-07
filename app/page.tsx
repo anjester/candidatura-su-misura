@@ -4,7 +4,7 @@ import { CheckCircle2, Clipboard, FileDown, Link2, LoaderCircle, Mail, Play, Sen
 
 type Result={title:string;company:string;score:number;emails:string[];recipient:string;requirements:string[];missing:string[];cvTemplate:string;cvTitle:string;cvSummary:string;cvSkills:string[];letter:string;subject:string;note:string};
 type AgentJob={source:string;title:string;company:string;score:number;status:string;band?:"top"|"review";email:string|null;url:string;gaps:string[]};
-type AgentResult={ok?:boolean;mode?:string;reanalyze?:boolean;found?:number;unique?:number;candidates?:number;alreadySeen?:number;evaluated?:number;top?:number;review?:number;skipped?:number;sent?:number;message?:string;results?:AgentJob[];error?:string;details?:string};
+type AgentResult={ok?:boolean;mode?:string;reanalyze?:boolean;found?:number;unique?:number;candidates?:number;alreadySeen?:number;evaluated?:number;top?:number;review?:number;skipped?:number;sent?:number;pending?:number;message?:string;results?:AgentJob[];error?:string;details?:string};
 
 export default function Home(){
  const [url,setUrl]=useState("");const[pasted,setPasted]=useState("");const[tone,setTone]=useState("diretto");
