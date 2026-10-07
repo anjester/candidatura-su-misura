@@ -189,7 +189,8 @@ function crossSourceKey(item: Job) {
     .replace(/\s+/g, " ")
     .trim();
 
-  return `${title}|${normalize(item.company)}|${normalize(item.location)}`;
+  // Same normalized title + same company = same vacancy across sources.
+  return `${title}|${normalize(item.company)}`;
 }
 
 function dedupeCrossSource(items: Job[]): Job[] {
@@ -203,16 +204,58 @@ function dedupeCrossSource(items: Job[]): Job[] {
     if (seenSourceId.has(sourceKey)) return false;
     seenSourceId.add(sourceKey);
 
-    if (equivalentKey !== "||" && seenEquivalent.has(equivalentKey)) {
+    if (equivalentKey !== "|" && seenEquivalent.has(equivalentKey)) {
       return false;
     }
 
-    if (equivalentKey !== "||") {
+    if (equivalentKey !== "|") {
       seenEquivalent.add(equivalentKey);
     }
 
     return true;
   });
+}
+
+
+function registrableHost(hostname: string) {
+  const h = hostname.toLowerCase().replace(/^www\./, "");
+  const parts = h.split(".").filter(Boolean);
+  if (parts.length <= 2) return h;
+  return parts.slice(-2).join(".");
+}
+
+function isSafeRecipient(email?: string, jobUrl?: string) {
+  if (!email || !jobUrl) return false;
+
+  try {
+    const emailDomain = email.split("@")[1]?.toLowerCase();
+    const jobHost = new URL(jobUrl).hostname.toLowerCase();
+
+    if (!emailDomain) return false;
+
+    const emailRoot = registrableHost(emailDomain);
+    const jobRoot = registrableHost(jobHost);
+
+    const aggregatorRoots = [
+      "adzuna.it",
+      "adzuna.com",
+      "jooble.org",
+      "jooble.it",
+      "indeed.com",
+      "linkedin.com",
+    ];
+
+    if (aggregatorRoots.includes(jobRoot)) return false;
+
+    return (
+      emailDomain === jobHost ||
+      emailDomain.endsWith(`.${jobRoot}`) ||
+      jobHost.endsWith(`.${emailRoot}`) ||
+      emailRoot === jobRoot
+    );
+  } catch {
+    return false;
+  }
 }
 
 export async function POST(req: Request) {
@@ -351,7 +394,9 @@ export async function POST(req: Request) {
       };
 
       const evaluated = strictEvaluate(evaluate(recheckJob));
-      evaluated.email = enriched.email;
+      evaluated.email = isSafeRecipient(enriched.email, candidate.url)
+        ? enriched.email
+        : undefined;
 
       let status =
         evaluated.score >= 88 && evaluated.strict.autoEligible
