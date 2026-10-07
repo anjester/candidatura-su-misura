@@ -73,6 +73,24 @@ function validEmail(email: string) {
   return true;
 }
 
+function rootHost(hostname: string) {
+  const h = hostname.toLowerCase().replace(/^www\./, "");
+  const parts = h.split(".").filter(Boolean);
+  if (parts.length <= 2) return h;
+  return parts.slice(-2).join(".");
+}
+
+function emailMatchesPage(email: string, pageUrl: string) {
+  try {
+    const emailDomain = email.split("@")[1]?.toLowerCase();
+    const pageHost = new URL(pageUrl).hostname.toLowerCase();
+    if (!emailDomain) return false;
+    return rootHost(emailDomain) === rootHost(pageHost);
+  } catch {
+    return false;
+  }
+}
+
 function rankEmail(email: string) {
   const e = email.toLowerCase();
 
@@ -231,7 +249,8 @@ export async function enrichFromJobPage(
   for (const candidateUrl of candidateLinks) {
     try {
       const page = await fetchHtml(candidateUrl, 6000);
-      const emails = extractEmails(page.html);
+      const emails = extractEmails(page.html)
+        .filter((email) => emailMatchesPage(email, page.finalUrl));
 
       if (emails.length) {
         return {
