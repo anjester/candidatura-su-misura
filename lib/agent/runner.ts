@@ -338,7 +338,7 @@ export async function runAgent(options?: { reanalyze?: boolean }) {
       } catch {}
 
       const queuedJob: EvaluatedJob = {
-        source: row.source,
+        source: row.source === "jooble" ? "jooble" : "adzuna",
         sourceId: row.source_id,
         title: clean(row.title),
         company: clean(row.company),
