@@ -3,6 +3,16 @@ import { NextResponse } from "next/server";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
+function safeSubject(value: string) {
+  return String(value || "")
+    .replace(/→/g, "->")
+    .replace(/[–—]/g, "-")
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/…/g, "...")
+    .replace(/[^\x20-\x7EÀ-ÿ]/g, "");
+}
+
 export async function POST() {
   try {
     const testMode =
@@ -102,7 +112,7 @@ export async function POST() {
 
       await smtpSend({
         to: testRecipient,
-        subject: `[TEST → ${email}] ${app.subject}`,
+        subject: safeSubject(`[TEST -> ${email}] ${app.subject}`),
         message:
           `TEST MODE\n` +
           `Azienda: ${candidate.company}\n` +
