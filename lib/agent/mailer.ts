@@ -114,13 +114,12 @@ export function pdfFor(cv: any) {
   const x = 190;
   const right = 568;
 
-  t(x, 792, 7.6, `CV MIRATO - ${cv.cvTemplate || "ATS CLEAN"}`, true, "0.72 0.45 0.14");
-  t(x, 757, 23, "Antonio Filippone", true);
-  t(x, 731, 10.8, cv.cvTitle || "Senior Graphic Designer", true, "0.27 0.40 0.52");
-  line(x, 714, right, 714);
+  t(x, 786, 23, "Antonio Filippone", true);
+  t(x, 758, 10.8, cv.cvTitle || "Senior Graphic Designer", true, "0.27 0.40 0.52");
+  line(x, 739, right, 739);
 
-  t(x, 692, 8.3, "PROFILO", true, "0.72 0.45 0.14");
-  let y = 674;
+  t(x, 717, 8.3, "PROFILO", true, "0.72 0.45 0.14");
+  let y = 699;
 
   for (const l of wrap(
     cv.cvSummary ||
