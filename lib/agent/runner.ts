@@ -13,7 +13,7 @@ import {
   storeConfigured,
   updateJobStatus,
 } from "./store";
-import { pdfFor, smtpSend } from "./mailer";
+import { pdfFor, smtpNotify, smtpSend } from "./mailer";
 import { findHunterCompanyEmail } from "./hunter";
 
 type StrictMeta = {
@@ -239,6 +239,9 @@ export async function runAgent(options?: { reanalyze?: boolean }) {
     Number(process.env.MAX_AUTO_SEND_PER_RUN || 3)
   );
 
+  const notifyRecipient =
+    process.env.NOTIFY_RECIPIENT?.trim() || "";
+
   let adzunaJobs: Job[] = [];
   let joobleJobs: Job[] = [];
 
@@ -282,6 +285,13 @@ export async function runAgent(options?: { reanalyze?: boolean }) {
 
   let sent = 0;
   let alreadySeenCount = 0;
+  const sentItems: Array<{
+    company: string;
+    title: string;
+    recipient: string;
+    score: number;
+    url: string;
+  }> = [];
 
   const startedAt = Date.now();
   const softDeadlineMs = 45_000;
@@ -369,6 +379,33 @@ export async function runAgent(options?: { reanalyze?: boolean }) {
         });
 
         sent++;
+
+        sentItems.push({
+          company: clean(row.company),
+          title: clean(row.title),
+          recipient,
+          score: Number(row.score || autoThreshold),
+          url: clean(row.url),
+        });
+
+        if (notifyRecipient) {
+          try {
+            await smtpNotify({
+              to: notifyRecipient,
+              subject: `Candidatura inviata - ${clean(row.company)} - ${clean(row.title)}`,
+              message:
+                `Candidatura inviata automaticamente.\n\n` +
+                `Azienda: ${clean(row.company)}\n` +
+                `Posizione: ${clean(row.title)}\n` +
+                `Match: ${Number(row.score || autoThreshold)}%\n` +
+                `Destinatario: ${recipient}\n` +
+                `Fonte: ${row.source}\n` +
+                `Annuncio: ${clean(row.url) || "-"}\n` +
+                `Ora: ${new Date().toLocaleString("it-IT", { timeZone: "Europe/Rome" })}`,
+            });
+          } catch {}
+        }
+
         await updateJobStatus(
           row.id,
           "sent",
@@ -505,6 +542,32 @@ export async function runAgent(options?: { reanalyze?: boolean }) {
 
           sent++;
           status = "sent";
+
+          sentItems.push({
+            company: evaluated.company,
+            title: evaluated.title,
+            recipient: evaluated.email,
+            score: evaluated.score,
+            url: evaluated.url,
+          });
+
+          if (notifyRecipient) {
+            try {
+              await smtpNotify({
+                to: notifyRecipient,
+                subject: `Candidatura inviata - ${evaluated.company} - ${evaluated.title}`,
+                message:
+                  `Candidatura inviata automaticamente.\n\n` +
+                  `Azienda: ${evaluated.company}\n` +
+                  `Posizione: ${evaluated.title}\n` +
+                  `Match: ${evaluated.score}%\n` +
+                  `Destinatario: ${evaluated.email}\n` +
+                  `Fonte: ${evaluated.source}\n` +
+                  `Annuncio: ${evaluated.url || "-"}\n` +
+                  `Ora: ${new Date().toLocaleString("it-IT", { timeZone: "Europe/Rome" })}`,
+              });
+            } catch {}
+          }
         } catch (error) {
           status = "send_error";
           note =
@@ -580,6 +643,25 @@ export async function runAgent(options?: { reanalyze?: boolean }) {
   const pending = storeConfigured()
     ? await countPendingJobs()
     : 0;
+
+  if (!reanalyze && mode === "auto" && notifyRecipient && sentItems.length > 0) {
+    try {
+      const lines = sentItems.map(
+        (item, i) =>
+          `${i + 1}. ${item.company} - ${item.title} (${item.score}%) -> ${item.recipient}`
+      );
+
+      await smtpNotify({
+        to: notifyRecipient,
+        subject: `Job Agent - ${sentItems.length} candidature inviate, ${pending} in coda`,
+        message:
+          `Riepilogo del run automatico.\n\n` +
+          `Mail inviate: ${sentItems.length}\n` +
+          `In coda: ${pending}\n\n` +
+          lines.join("\n"),
+      });
+    } catch {}
+  }
 
   return {
     ok: true,
