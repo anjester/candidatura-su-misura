@@ -4,18 +4,18 @@ import { CheckCircle2, Clipboard, FileDown, Link2, LoaderCircle, Mail, Play, Sen
 
 type Result={title:string;company:string;score:number;emails:string[];recipient:string;requirements:string[];missing:string[];cvTemplate:string;cvTitle:string;cvSummary:string;cvSkills:string[];letter:string;subject:string;note:string};
 type AgentJob={source:string;title:string;company:string;score:number;status:string;band?:"top"|"review";email:string|null;url:string;gaps:string[]};
-type AgentResult={ok?:boolean;mode?:string;found?:number;evaluated?:number;top?:number;review?:number;skipped?:number;sent?:number;results?:AgentJob[];error?:string;details?:string};
+type AgentResult={ok?:boolean;mode?:string;reanalyze?:boolean;found?:number;unique?:number;candidates?:number;alreadySeen?:number;evaluated?:number;top?:number;review?:number;skipped?:number;sent?:number;message?:string;results?:AgentJob[];error?:string;details?:string};
 
 export default function Home(){
  const [url,setUrl]=useState("");const[pasted,setPasted]=useState("");const[tone,setTone]=useState("diretto");
  const[result,setResult]=useState<Result|null>(null);const[letter,setLetter]=useState("");const[subject,setSubject]=useState("");const[recipient,setRecipient]=useState("");
  const[loading,setLoading]=useState(false);const[sending,setSending]=useState(false);const[error,setError]=useState("");const[status,setStatus]=useState("");const[photo,setPhoto]=useState<string>("");const[withPhoto,setWithPhoto]=useState(false);const fileRef=useRef<HTMLInputElement>(null);
- const[agentLoading,setAgentLoading]=useState(false);const[agentResult,setAgentResult]=useState<AgentResult|null>(null);
+ const[agentLoading,setAgentLoading]=useState(false);const[agentMode,setAgentMode]=useState<"normal"|"reanalyze">("normal");const[agentResult,setAgentResult]=useState<AgentResult|null>(null);
  async function analyze(e:React.FormEvent){e.preventDefault();setLoading(true);setError("");setStatus("");try{const r=await fetch("/api/analyze",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({url,pasted,tone})});const d=await r.json();if(!r.ok)throw new Error(d.error||"Impossibile analizzare l’annuncio.");setResult(d);setLetter(d.letter);setSubject(d.subject);setRecipient(d.recipient||"")}catch(e){setError(e instanceof Error?e.message:"Errore imprevisto.")}finally{setLoading(false)}}
  function loadPhoto(e:React.ChangeEvent<HTMLInputElement>){const f=e.target.files?.[0];if(!f)return;const reader=new FileReader();reader.onload=()=>{setPhoto(String(reader.result));setWithPhoto(true)};reader.readAsDataURL(f)}
  async function copy(){await navigator.clipboard.writeText(subject+"\n\n"+letter);setStatus("Testo copiato negli appunti.")}
  async function send(){setSending(true);setError("");setStatus("");try{const r=await fetch("/api/send",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({to:recipient,subject,message:letter,cv:result})});const d=await r.json();if(!r.ok)throw new Error(d.error||"Invio non riuscito.");setStatus(`Email inviata a ${recipient}.`)}catch(e){setError(e instanceof Error?e.message:"Invio non riuscito.")}finally{setSending(false)}}
- async function runAgent(){setAgentLoading(true);setAgentResult(null);setError("");try{const r=await fetch("/api/agent/manual-run",{method:"POST",cache:"no-store"});const d=await r.json();setAgentResult(d);if(!r.ok)throw new Error(d.error||"Esecuzione agente non riuscita.")}catch(e){setError(e instanceof Error?e.message:"Esecuzione agente non riuscita.")}finally{setAgentLoading(false)}}
+ async function runAgent(reanalyze=false){setAgentLoading(true);setAgentMode(reanalyze?"reanalyze":"normal");setAgentResult(null);setError("");try{const r=await fetch("/api/agent/manual-run",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reanalyze}),cache:"no-store"});const d=await r.json();setAgentResult(d);if(!r.ok)throw new Error(d.error||"Esecuzione agente non riuscita.")}catch(e){setError(e instanceof Error?e.message:"Esecuzione agente non riuscita.")}finally{setAgentLoading(false)}}
  function printCV(){window.print()}
  return <main className="shell">
   <header><div className="brand"><span className="logo">af.</span><div><strong>Candidatura su misura</strong><small>Antonio Filippone · CV & Application Engine</small></div></div><span className="top-note">ATS · CV · EMAIL</span></header>
@@ -25,20 +25,28 @@ export default function Home(){
    <div style={{width:"100%"}}>
     <strong>Job Agent automatico</strong>
     <p>Ricerca Adzuna + Jooble, deduplica su Supabase e valutazione delle offerte. In modalità <b>review</b> non invia candidature.</p>
-    <button type="button" className="primary" onClick={runAgent} disabled={agentLoading} style={{width:"auto",marginTop:10}}>
-     {agentLoading?<><LoaderCircle size={18} className="spin"/>Eseguo ricerca…</>:<><Play size={18}/>Esegui agente ora</>}
-    </button>
+    <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:10}}>
+     <button type="button" className="primary" onClick={()=>runAgent(false)} disabled={agentLoading} style={{width:"auto",marginTop:0}}>
+      {agentLoading&&agentMode==="normal"?<><LoaderCircle size={18} className="spin"/>Eseguo ricerca…</>:<><Play size={18}/>Esegui agente ora</>}
+     </button>
+     <button type="button" className="secondary" onClick={()=>runAgent(true)} disabled={agentLoading} style={{width:"auto"}}>
+      {agentLoading&&agentMode==="reanalyze"?<><LoaderCircle size={18} className="spin"/>Rianalizzo…</>:<>Rianalizza ultimi annunci</>}
+     </button>
+    </div>
     {agentResult&&<div style={{marginTop:14}}>
       {agentResult.error?<div><p className="error">{agentResult.error}</p>{agentResult.details&&<pre style={{whiteSpace:"pre-wrap",marginTop:8,fontSize:12,lineHeight:1.4}}>{agentResult.details}</pre>}</div>:<>
        <div className="meta">
         <span>Modalità: <b>{agentResult.mode}</b></span>
         <span>Trovati: <b>{agentResult.found ?? 0}</b></span>
+        <span>Nuovi candidati: <b>{agentResult.candidates ?? 0}</b></span>
+        <span>Già visti: <b>{agentResult.alreadySeen ?? 0}</b></span>
         <span>Analizzati: <b>{agentResult.evaluated ?? 0}</b></span>
         <span>Top: <b>{agentResult.top ?? 0}</b></span>
         <span>Da valutare: <b>{agentResult.review ?? 0}</b></span>
         <span>Scartati: <b>{agentResult.skipped ?? 0}</b></span>
         <span>Inviati: <b>{agentResult.sent ?? 0}</b></span>
        </div>
+       {agentResult.message&&<p className="notice" style={{marginTop:10}}>{agentResult.message}</p>}
        {(agentResult.results?.length??0)>0&&<>
         {(agentResult.results?.some(j=>j.band==="top")??false)&&<div style={{marginTop:16}}>
          <strong style={{display:"block",marginBottom:8}}>TOP MATCH</strong>
