@@ -200,14 +200,110 @@ function sameSite(a: string, b: string) {
   }
 }
 
+const AGGREGATOR_ROOTS = [
+  "adzuna.it",
+  "adzuna.com",
+  "jooble.org",
+  "jooble.it",
+  "indeed.com",
+  "linkedin.com",
+];
+
+function isAggregator(url: string) {
+  try {
+    const host = rootHost(new URL(url).hostname);
+    return AGGREGATOR_ROOTS.includes(host);
+  } catch {
+    return false;
+  }
+}
+
+function likelyCompanyLink(html: string, baseUrl: string) {
+  const candidates: Array<{ url: string; score: number }> = [];
+
+  for (const match of html.matchAll(/href\s*=\s*["']([^"'#]+)["']/gi)) {
+    try {
+      const u = new URL(match[1], baseUrl);
+
+      if (!["http:", "https:"].includes(u.protocol)) continue;
+      if (isAggregator(u.toString())) continue;
+
+      const full = u.toString();
+      const path = `${u.pathname} ${u.search}`.toLowerCase();
+
+      if (
+        /facebook|instagram|twitter|x\.com|youtube|tiktok|doubleclick|googlead|tracking/i.test(
+          full
+        )
+      ) {
+        continue;
+      }
+
+      let score = 0;
+      if (/career|job|lavora|work-with|vacan|position|opportun/i.test(path)) score += 5;
+      if (/company|about|chi-siamo|contatti|contact/i.test(path)) score += 2;
+      if (u.origin !== new URL(baseUrl).origin) score += 3;
+
+      candidates.push({ url: full, score });
+    } catch {
+      // ignore invalid URL
+    }
+  }
+
+  candidates.sort((a, b) => b.score - a.score);
+  return candidates[0]?.url;
+}
+
+async function findEmailOnCompanySite(companyUrl: string) {
+  try {
+    const main = await fetchHtml(companyUrl, 7000);
+    const direct = extractEmails(main.html)
+      .filter((email) => emailMatchesPage(email, main.finalUrl));
+
+    if (direct.length) {
+      return { email: direct[0], companyUrl: main.finalUrl };
+    }
+
+    const links = extractCandidateLinks(main.html, main.finalUrl)
+      .filter((x) => sameSite(x, main.finalUrl))
+      .slice(0, 3);
+
+    for (const u of links) {
+      try {
+        const page = await fetchHtml(u, 5000);
+        const emails = extractEmails(page.html)
+          .filter((email) => emailMatchesPage(email, page.finalUrl));
+
+        if (emails.length) {
+          return {
+            email: emails[0],
+            companyUrl: page.finalUrl,
+          };
+        }
+      } catch {
+        // continue
+      }
+    }
+
+    return { email: undefined, companyUrl: main.finalUrl };
+  } catch {
+    return { email: undefined, companyUrl };
+  }
+}
+
 export async function enrichFromJobPage(
   url: string,
   fallbackDescription = ""
-): Promise<EnrichedJobPage> {
+): Promise<{
+  text: string;
+  email?: string;
+  companyUrl?: string;
+}> {
   if (!url) {
     return {
       text: fallbackDescription,
-      email: extractEmails(fallbackDescription)[0],
+      email: undefined,
+      companyUrl: undefined,
     };
   }
 
@@ -221,7 +317,8 @@ export async function enrichFromJobPage(
   } catch {
     return {
       text: fallbackDescription,
-      email: extractEmails(fallbackDescription)[0],
+      email: undefined,
+      companyUrl: undefined,
     };
   }
 
@@ -231,40 +328,42 @@ export async function enrichFromJobPage(
       ? mainText
       : fallbackDescription;
 
-  const directEmails = extractEmails(`${mainHtml}\n${fallbackDescription}`);
+  if (!isAggregator(finalUrl)) {
+    const directEmails = extractEmails(`${mainHtml}\n${fallbackDescription}`)
+      .filter((email) => emailMatchesPage(email, finalUrl));
 
-  if (directEmails.length) {
+    if (directEmails.length) {
+      return {
+        text: combinedText,
+        email: directEmails[0],
+        companyUrl: finalUrl,
+      };
+    }
+
+    const found = await findEmailOnCompanySite(finalUrl);
+
     return {
       text: combinedText,
-      email: directEmails[0],
+      email: found.email,
+      companyUrl: found.companyUrl,
     };
   }
 
-  // Se non c'è una mail nell'annuncio, controlliamo solo poche pagine
-  // pubbliche e pertinenti dello stesso sito, senza inventare indirizzi.
-  const candidateLinks = extractCandidateLinks(mainHtml, finalUrl)
-    .filter((x) => sameSite(x, finalUrl))
-    .slice(0, 3);
+  const outbound = likelyCompanyLink(mainHtml, finalUrl);
 
-  for (const candidateUrl of candidateLinks) {
-    try {
-      const page = await fetchHtml(candidateUrl, 6000);
-      const emails = extractEmails(page.html)
-        .filter((email) => emailMatchesPage(email, page.finalUrl));
+  if (outbound) {
+    const found = await findEmailOnCompanySite(outbound);
 
-      if (emails.length) {
-        return {
-          text: combinedText,
-          email: emails[0],
-        };
-      }
-    } catch {
-      // Passa al link successivo
-    }
+    return {
+      text: combinedText,
+      email: found.email,
+      companyUrl: found.companyUrl || outbound,
+    };
   }
 
   return {
     text: combinedText,
     email: undefined,
+    companyUrl: undefined,
   };
 }
