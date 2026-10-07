@@ -153,6 +153,65 @@ export async function alreadySeenEquivalent(
   });
 }
 
+export async function alreadySentRecently(
+  company: string,
+  recipient: string,
+  days = 30
+) {
+  const c = cfg();
+
+  if (!c) {
+    throw new Error("Supabase non configurato.");
+  }
+
+  const normalizedCompany = normalize(company);
+  const cleanRecipient = String(recipient || "").trim().toLowerCase();
+
+  if (!normalizedCompany || !cleanRecipient) return false;
+
+  const since = new Date(
+    Date.now() - days * 24 * 60 * 60 * 1000
+  ).toISOString();
+
+  const u = new URL(`${c.url}/rest/v1/${table}`);
+  u.searchParams.set(
+    "select",
+    "id,company,recipient,status,created_at"
+  );
+  u.searchParams.set("recipient", `eq.${cleanRecipient}`);
+  u.searchParams.set("status", "eq.sent");
+  u.searchParams.set("created_at", `gte.${since}`);
+  u.searchParams.set("order", "created_at.desc");
+  u.searchParams.set("limit", "50");
+
+  const r = await fetch(u.toString(), {
+    headers: {
+      ...headers(c.key),
+      Accept: "application/json",
+    },
+    cache: "no-store",
+  });
+
+  if (!r.ok) {
+    await supabaseError(
+      "Supabase recent-send check failed",
+      r
+    );
+  }
+
+  const rows = await r.json();
+
+  if (!Array.isArray(rows)) return false;
+
+  return rows.some(
+    (row: any) =>
+      normalize(row.company) === normalizedCompany &&
+      String(row.recipient || "").trim().toLowerCase() ===
+        cleanRecipient &&
+      row.status === "sent"
+  );
+}
+
 export async function saveJob(
   job: EvaluatedJob,
   status: string,

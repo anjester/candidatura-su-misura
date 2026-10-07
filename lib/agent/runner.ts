@@ -6,6 +6,7 @@ import { enrichFromJobPage } from "./web";
 import {
   alreadySeen,
   alreadySeenEquivalent,
+  alreadySentRecently,
   saveJob,
   storeConfigured,
 } from "./store";
@@ -370,6 +371,17 @@ export async function runAgent(options?: { reanalyze?: boolean }) {
       evaluated.email &&
       sent < maxPerRun
     ) {
+      const duplicateRecipient = await alreadySentRecently(
+        evaluated.company,
+        evaluated.email,
+        30
+      );
+
+      if (duplicateRecipient) {
+        status = "already_sent_recently";
+        note =
+          "Candidatura non inviata: stessa azienda e stessa email gia contattate negli ultimi 30 giorni.";
+      } else {
       if (!storeConfigured()) {
         status = "blocked_no_store";
         note =
@@ -409,6 +421,7 @@ export async function runAgent(options?: { reanalyze?: boolean }) {
               ? error.message
               : "Errore durante l'invio email.";
         }
+      }
       }
     } else if (
       evaluated.score >= autoThreshold &&
