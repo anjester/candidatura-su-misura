@@ -266,9 +266,9 @@ export async function runAgent(options?: { reanalyze?: boolean }) {
       (x) =>
         x.strict.strongRole &&
         !x.strict.hardNegative &&
-        x.score >= 68
+        x.score >= 72
     )
-    .slice(0, 15);
+    .slice(0, 8);
 
   const results: Array<{
     job: StrictEvaluatedJob;
@@ -279,7 +279,13 @@ export async function runAgent(options?: { reanalyze?: boolean }) {
   let sent = 0;
   let alreadySeenCount = 0;
 
+  const startedAt = Date.now();
+  const softDeadlineMs = 45_000;
+
   for (const candidate of candidates) {
+    if (Date.now() - startedAt > softDeadlineMs) {
+      break;
+    }
     if (!reanalyze) {
       if (await alreadySeen(candidate.source, candidate.sourceId)) {
         alreadySeenCount++;
@@ -381,6 +387,21 @@ export async function runAgent(options?: { reanalyze?: boolean }) {
 
           sent++;
           status = "sent";
+
+          await saveJob(
+            evaluated,
+            status,
+            evaluated.email,
+            note
+          );
+
+          results.push({ job: evaluated, status, note });
+
+          if (sent >= maxPerRun) {
+            break;
+          }
+
+          continue;
         } catch (error) {
           status = "send_error";
           note =
