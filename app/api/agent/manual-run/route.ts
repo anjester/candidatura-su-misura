@@ -365,9 +365,10 @@ export async function POST(req: Request) {
         }
       }
 
-      let enriched: { text: string; email?: string } = {
+      let enriched: { text: string; email?: string; companyUrl?: string } = {
         text: candidate.description,
         email: undefined,
+        companyUrl: undefined,
       };
 
       if (candidate.score >= 72) {
@@ -394,7 +395,12 @@ export async function POST(req: Request) {
       };
 
       const evaluated = strictEvaluate(evaluate(recheckJob));
-      evaluated.email = isSafeRecipient(enriched.email, candidate.url)
+      const recipientReferenceUrl = enriched.companyUrl || candidate.url;
+
+      evaluated.email = isSafeRecipient(
+        enriched.email,
+        recipientReferenceUrl
+      )
         ? enriched.email
         : undefined;
 
