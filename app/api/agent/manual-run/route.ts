@@ -215,8 +215,15 @@ function dedupeCrossSource(items: Job[]): Job[] {
   });
 }
 
-export async function POST() {
+export async function POST(req: Request) {
   try {
+    let reanalyze = false;
+    try {
+      const body = await req.json();
+      reanalyze = body?.reanalyze === true;
+    } catch {
+      reanalyze = false;
+    }
     const [
       { fetchAdzunaJobs },
       { fetchJoobleJobs },
@@ -233,7 +240,8 @@ export async function POST() {
       import("@/lib/agent/mailer"),
     ]);
 
-    const mode = (process.env.AGENT_MODE || "review").toLowerCase();
+    const configuredMode = (process.env.AGENT_MODE || "review").toLowerCase();
+    const mode = reanalyze ? "review" : configuredMode;
     const autoThreshold = Number(process.env.AUTO_SEND_THRESHOLD || 88);
     const maxPerRun = Number(process.env.MAX_AUTO_SEND_PER_RUN || 3);
 
@@ -283,28 +291,35 @@ export async function POST() {
     }> = [];
 
     let sent = 0;
+    let alreadySeenCount = 0;
 
     for (const candidate of candidates) {
-      try {
-        if (await alreadySeen(candidate.source, candidate.sourceId)) continue;
+      if (!reanalyze) {
+        try {
+          if (await alreadySeen(candidate.source, candidate.sourceId)) {
+            alreadySeenCount++;
+            continue;
+          }
 
-        if (
-          await alreadySeenEquivalent(
-            candidate.title,
-            candidate.company,
-            candidate.location
-          )
-        ) {
-          continue;
+          if (
+            await alreadySeenEquivalent(
+              candidate.title,
+              candidate.company,
+              candidate.location
+            )
+          ) {
+            alreadySeenCount++;
+            continue;
+          }
+        } catch (error) {
+          return NextResponse.json(
+            {
+              error: "Errore Supabase durante controllo duplicati",
+              details: error instanceof Error ? error.message : String(error),
+            },
+            { status: 500 }
+          );
         }
-      } catch (error) {
-        return NextResponse.json(
-          {
-            error: "Errore Supabase durante controllo duplicati",
-            details: error instanceof Error ? error.message : String(error),
-          },
-          { status: 500 }
-        );
       }
 
       let enriched: { text: string; email?: string } = {
@@ -350,6 +365,7 @@ export async function POST() {
       if (
         evaluated.score >= autoThreshold &&
         evaluated.strict.autoEligible &&
+        !reanalyze &&
         mode === "auto" &&
         evaluated.email &&
         sent < maxPerRun
@@ -393,21 +409,23 @@ export async function POST() {
         status = "top";
       }
 
-      try {
-        await saveJob(
-          evaluated,
-          status,
-          evaluated.email,
-          note
-        );
-      } catch (error) {
-        return NextResponse.json(
-          {
-            error: "Errore Supabase durante salvataggio",
-            details: error instanceof Error ? error.message : String(error),
-          },
-          { status: 500 }
-        );
+      if (!reanalyze) {
+        try {
+          await saveJob(
+            evaluated,
+            status,
+            evaluated.email,
+            note
+          );
+        } catch (error) {
+          return NextResponse.json(
+            {
+              error: "Errore Supabase durante salvataggio",
+              details: error instanceof Error ? error.message : String(error),
+            },
+            { status: 500 }
+          );
+        }
       }
 
       results.push({ job: evaluated, status, note });
@@ -435,14 +453,20 @@ export async function POST() {
 
     const topCount = visibleResults.filter((x) => x.band === "top").length;
     const reviewCount = visibleResults.filter((x) => x.band === "review").length;
-    const skippedCount = results.filter(({ status }) => status === "skipped").length;
+    const skippedInsideCandidates = results.filter(
+      ({ status }) => status === "skipped"
+    ).length;
+    const filteredOut = Math.max(0, unique.length - candidates.length);
+    const skippedCount = skippedInsideCandidates + filteredOut;
 
     return NextResponse.json({
       ok: true,
       mode,
+      reanalyze,
       found: raw.length,
       unique: unique.length,
       candidates: candidates.length,
+      alreadySeen: alreadySeenCount,
       adzuna: adzunaJobs.length,
       jooble: joobleJobs.length,
       evaluated: results.length,
@@ -450,6 +474,12 @@ export async function POST() {
       review: reviewCount,
       skipped: skippedCount,
       sent,
+      message:
+        reanalyze
+          ? "Rianalisi completata: deduplica e salvataggio ignorati, nessuna candidatura inviata."
+          : results.length === 0 && alreadySeenCount > 0
+            ? "Nessun nuovo annuncio pertinente: i candidati migliori erano già presenti nello storico."
+            : undefined,
       results: visibleResults,
     });
   } catch (error) {
