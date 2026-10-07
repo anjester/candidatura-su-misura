@@ -212,6 +212,103 @@ export async function alreadySentRecently(
   );
 }
 
+
+export type PendingRow = {
+  id: number;
+  created_at: string;
+  source: string;
+  source_id: string;
+  title: string | null;
+  company: string | null;
+  location: string | null;
+  url: string | null;
+  score: number | null;
+  status: string;
+  recipient: string | null;
+  notes: string | null;
+};
+
+export async function getPendingJobs(limit = 20): Promise<PendingRow[]> {
+  const c = cfg();
+  if (!c) throw new Error("Supabase non configurato.");
+
+  const u = new URL(`${c.url}/rest/v1/${table}`);
+  u.searchParams.set(
+    "select",
+    "id,created_at,source,source_id,title,company,location,url,score,status,recipient,notes"
+  );
+  u.searchParams.set("status", "eq.pending");
+  u.searchParams.set("order", "created_at.asc");
+  u.searchParams.set("limit", String(limit));
+
+  const r = await fetch(u.toString(), {
+    headers: { ...headers(c.key), Accept: "application/json" },
+    cache: "no-store",
+  });
+
+  if (!r.ok) await supabaseError("Supabase pending queue failed", r);
+  const rows = await r.json();
+  return Array.isArray(rows) ? rows : [];
+}
+
+export async function countPendingJobs() {
+  const c = cfg();
+  if (!c) return 0;
+
+  const u = new URL(`${c.url}/rest/v1/${table}`);
+  u.searchParams.set("select", "id");
+  u.searchParams.set("status", "eq.pending");
+
+  const r = await fetch(u.toString(), {
+    headers: {
+      ...headers(c.key),
+      Accept: "application/json",
+      Prefer: "count=exact",
+      Range: "0-0",
+    },
+    cache: "no-store",
+  });
+
+  if (!r.ok) await supabaseError("Supabase pending count failed", r);
+
+  const range = r.headers.get("content-range") || "";
+  const match = range.match(/\/(\d+)$/);
+  if (match) return Number(match[1]);
+
+  const rows = await r.json();
+  return Array.isArray(rows) ? rows.length : 0;
+}
+
+export async function updateJobStatus(
+  id: number,
+  status: string,
+  recipient?: string,
+  notes?: string
+) {
+  const c = cfg();
+  if (!c) throw new Error("Supabase non configurato.");
+
+  const u = new URL(`${c.url}/rest/v1/${table}`);
+  u.searchParams.set("id", `eq.${id}`);
+
+  const r = await fetch(u.toString(), {
+    method: "PATCH",
+    headers: {
+      ...headers(c.key),
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      Prefer: "return=minimal",
+    },
+    body: JSON.stringify({
+      status,
+      recipient: recipient || null,
+      notes: notes || null,
+    }),
+  });
+
+  if (!r.ok) await supabaseError("Supabase status update failed", r);
+}
+
 export async function saveJob(
   job: EvaluatedJob,
   status: string,

@@ -7,8 +7,11 @@ import {
   alreadySeen,
   alreadySeenEquivalent,
   alreadySentRecently,
+  countPendingJobs,
+  getPendingJobs,
   saveJob,
   storeConfigured,
+  updateJobStatus,
 } from "./store";
 import { pdfFor, smtpSend } from "./mailer";
 import { findHunterCompanyEmail } from "./hunter";
@@ -267,7 +270,7 @@ export async function runAgent(options?: { reanalyze?: boolean }) {
       (x) =>
         x.strict.strongRole &&
         !x.strict.hardNegative &&
-        x.score >= 72
+        x.score >= 68
     )
     .slice(0, 8);
 
@@ -283,10 +286,116 @@ export async function runAgent(options?: { reanalyze?: boolean }) {
   const startedAt = Date.now();
   const softDeadlineMs = 45_000;
 
-  for (const candidate of candidates) {
-    if (Date.now() - startedAt > softDeadlineMs) {
-      break;
+  // 1) In AUTO smaltisce prima la coda pending piu vecchia.
+  if (!reanalyze && mode === "auto" && storeConfigured() && maxPerRun > 0) {
+    const pendingRows = await getPendingJobs(Math.max(maxPerRun * 3, 10));
+
+    for (const row of pendingRows) {
+      if (sent >= maxPerRun) break;
+      if (Date.now() - startedAt > softDeadlineMs) break;
+
+      let recipient = clean(row.recipient);
+
+      if (!recipient && process.env.HUNTER_API_KEY) {
+        try {
+          const hunter = await findHunterCompanyEmail(clean(row.company));
+          recipient = clean(hunter.email);
+        } catch {}
+      }
+
+      if (!recipient) {
+        await updateJobStatus(
+          row.id,
+          "needs_manual",
+          undefined,
+          "Coda: nessuna email pubblica verificabile trovata."
+        );
+        continue;
+      }
+
+      const duplicateRecipient = await alreadySentRecently(
+        clean(row.company),
+        recipient,
+        30
+      );
+
+      if (duplicateRecipient) {
+        await updateJobStatus(
+          row.id,
+          "already_sent_recently",
+          recipient,
+          "Coda annullata: stessa azienda e stessa email gia contattate negli ultimi 30 giorni."
+        );
+        continue;
+      }
+
+      let description = "";
+      try {
+        if (row.url) {
+          const enriched = await enrichFromJobPage(row.url, "");
+          description = enriched.text || "";
+        }
+      } catch {}
+
+      const queuedJob: EvaluatedJob = {
+        source: row.source,
+        sourceId: row.source_id,
+        title: clean(row.title),
+        company: clean(row.company),
+        location: clean(row.location),
+        description,
+        url: clean(row.url),
+        createdAt: row.created_at,
+        score: Number(row.score || autoThreshold),
+        reasons: [],
+        gaps: [],
+        cvTemplate:
+          /indesign|impagin|editorial|dtp|prestampa|prepress/i.test(clean(row.title))
+            ? "Editorial / DTP"
+            : /motion|video|after effects|composit|animation/i.test(clean(row.title))
+              ? "Motion / Video"
+              : "ATS Clean",
+        email: recipient,
+      };
+
+      try {
+        const app = buildApplication(queuedJob);
+
+        await smtpSend({
+          to: recipient,
+          subject: app.subject,
+          message: app.message,
+          pdf: pdfFor(app.cv),
+        });
+
+        sent++;
+        await updateJobStatus(
+          row.id,
+          "sent",
+          recipient,
+          "Inviata dalla coda pending."
+        );
+
+        results.push({
+          job: queuedJob as StrictEvaluatedJob,
+          status: "sent",
+          note: "Inviata dalla coda pending.",
+        });
+      } catch (error) {
+        await updateJobStatus(
+          row.id,
+          "send_error",
+          recipient,
+          error instanceof Error
+            ? error.message
+            : "Errore durante l'invio dalla coda."
+        );
+      }
     }
+  }
+
+  for (const candidate of candidates) {
+    if (Date.now() - startedAt > softDeadlineMs) break;
     if (!reanalyze) {
       if (await alreadySeen(candidate.source, candidate.sourceId)) {
         alreadySeenCount++;
@@ -368,8 +477,7 @@ export async function runAgent(options?: { reanalyze?: boolean }) {
       evaluated.strict.autoEligible &&
       !reanalyze &&
       mode === "auto" &&
-      evaluated.email &&
-      sent < maxPerRun
+      evaluated.email
     ) {
       const duplicateRecipient = await alreadySentRecently(
         evaluated.company,
@@ -381,12 +489,10 @@ export async function runAgent(options?: { reanalyze?: boolean }) {
         status = "already_sent_recently";
         note =
           "Candidatura non inviata: stessa azienda e stessa email gia contattate negli ultimi 30 giorni.";
-      } else {
-      if (!storeConfigured()) {
+      } else if (!storeConfigured()) {
         status = "blocked_no_store";
-        note =
-          "Auto-invio bloccato: Supabase non configurato.";
-      } else {
+        note = "Auto-invio bloccato: Supabase non configurato.";
+      } else if (sent < maxPerRun) {
         try {
           const app = buildApplication(evaluated);
 
@@ -399,21 +505,6 @@ export async function runAgent(options?: { reanalyze?: boolean }) {
 
           sent++;
           status = "sent";
-
-          await saveJob(
-            evaluated,
-            status,
-            evaluated.email,
-            note
-          );
-
-          results.push({ job: evaluated, status, note });
-
-          if (sent >= maxPerRun) {
-            break;
-          }
-
-          continue;
         } catch (error) {
           status = "send_error";
           note =
@@ -421,7 +512,10 @@ export async function runAgent(options?: { reanalyze?: boolean }) {
               ? error.message
               : "Errore durante l'invio email.";
         }
-      }
+      } else {
+        status = "pending";
+        note =
+          "Candidatura valida messa in coda: limite di invii del run raggiunto.";
       }
     } else if (
       evaluated.score >= autoThreshold &&
@@ -483,6 +577,10 @@ export async function runAgent(options?: { reanalyze?: boolean }) {
     unique.length - candidates.length
   );
 
+  const pending = storeConfigured()
+    ? await countPendingJobs()
+    : 0;
+
   return {
     ok: true,
     mode,
@@ -499,6 +597,7 @@ export async function runAgent(options?: { reanalyze?: boolean }) {
     skipped:
       skippedInsideCandidates + filteredOut,
     sent,
+    pending,
     message:
       reanalyze
         ? "Rianalisi completata: storico ignorato e nessuna candidatura inviata."
