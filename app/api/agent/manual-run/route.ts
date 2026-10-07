@@ -189,8 +189,7 @@ function crossSourceKey(item: Job) {
     .replace(/\s+/g, " ")
     .trim();
 
-  // Same normalized title + same company = same vacancy across sources.
-  return `${title}|${normalize(item.company)}`;
+  return `${title}|${normalize(item.company)}|${normalize(item.location)}`;
 }
 
 function dedupeCrossSource(items: Job[]): Job[] {
@@ -204,58 +203,16 @@ function dedupeCrossSource(items: Job[]): Job[] {
     if (seenSourceId.has(sourceKey)) return false;
     seenSourceId.add(sourceKey);
 
-    if (equivalentKey !== "|" && seenEquivalent.has(equivalentKey)) {
+    if (equivalentKey !== "||" && seenEquivalent.has(equivalentKey)) {
       return false;
     }
 
-    if (equivalentKey !== "|") {
+    if (equivalentKey !== "||") {
       seenEquivalent.add(equivalentKey);
     }
 
     return true;
   });
-}
-
-
-function registrableHost(hostname: string) {
-  const h = hostname.toLowerCase().replace(/^www\./, "");
-  const parts = h.split(".").filter(Boolean);
-  if (parts.length <= 2) return h;
-  return parts.slice(-2).join(".");
-}
-
-function isSafeRecipient(email?: string, jobUrl?: string) {
-  if (!email || !jobUrl) return false;
-
-  try {
-    const emailDomain = email.split("@")[1]?.toLowerCase();
-    const jobHost = new URL(jobUrl).hostname.toLowerCase();
-
-    if (!emailDomain) return false;
-
-    const emailRoot = registrableHost(emailDomain);
-    const jobRoot = registrableHost(jobHost);
-
-    const aggregatorRoots = [
-      "adzuna.it",
-      "adzuna.com",
-      "jooble.org",
-      "jooble.it",
-      "indeed.com",
-      "linkedin.com",
-    ];
-
-    if (aggregatorRoots.includes(jobRoot)) return false;
-
-    return (
-      emailDomain === jobHost ||
-      emailDomain.endsWith(`.${jobRoot}`) ||
-      jobHost.endsWith(`.${emailRoot}`) ||
-      emailRoot === jobRoot
-    );
-  } catch {
-    return false;
-  }
 }
 
 export async function POST(req: Request) {
@@ -274,6 +231,7 @@ export async function POST(req: Request) {
       { enrichFromJobPage },
       { alreadySeen, alreadySeenEquivalent, saveJob, storeConfigured },
       { pdfFor, smtpSend },
+      { findHunterCompanyEmail },
     ] = await Promise.all([
       import("@/lib/agent/sources/adzuna"),
       import("@/lib/agent/sources/jooble"),
@@ -281,6 +239,7 @@ export async function POST(req: Request) {
       import("@/lib/agent/web"),
       import("@/lib/agent/store"),
       import("@/lib/agent/mailer"),
+      import("@/lib/agent/hunter"),
     ]);
 
     const configuredMode = (process.env.AGENT_MODE || "review").toLowerCase();
@@ -382,6 +341,21 @@ export async function POST(req: Request) {
         }
       }
 
+      if (
+        !enriched.email &&
+        candidate.score >= 88 &&
+        candidate.strict.autoEligible &&
+        process.env.HUNTER_API_KEY
+      ) {
+        try {
+          const hunter = await findHunterCompanyEmail(candidate.company);
+          if (hunter.email) {
+            enriched.email = hunter.email;
+            enriched.companyUrl = hunter.domain ? `https://${hunter.domain}` : undefined;
+          }
+        } catch {}
+      }
+
       const recheckJob: Job = {
         source: candidate.source,
         sourceId: candidate.sourceId,
@@ -395,14 +369,7 @@ export async function POST(req: Request) {
       };
 
       const evaluated = strictEvaluate(evaluate(recheckJob));
-      const recipientReferenceUrl = enriched.companyUrl || candidate.url;
-
-      evaluated.email = isSafeRecipient(
-        enriched.email,
-        recipientReferenceUrl
-      )
-        ? enriched.email
-        : undefined;
+      evaluated.email = enriched.email;
 
       let status =
         evaluated.score >= 88 && evaluated.strict.autoEligible
