@@ -1,6 +1,7 @@
 import type { Job, EvaluatedJob } from "./types";
 import { fetchAdzunaJobs } from "./sources/adzuna";
 import { fetchJoobleJobs } from "./sources/jooble";
+import { fetchCompanyCareerJobs } from "./sources/companyCareers";
 import { buildApplication, evaluate } from "./scoring";
 import { enrichFromJobPage } from "./web";
 import {
@@ -244,6 +245,7 @@ export async function runAgent(options?: { reanalyze?: boolean }) {
 
   let adzunaJobs: Job[] = [];
   let joobleJobs: Job[] = [];
+  let companyCareerJobs: Job[] = [];
 
   try {
     adzunaJobs = await fetchAdzunaJobs();
@@ -261,7 +263,19 @@ export async function runAgent(options?: { reanalyze?: boolean }) {
     );
   }
 
-  const raw: Job[] = [...adzunaJobs, ...joobleJobs];
+  try {
+    companyCareerJobs = await fetchCompanyCareerJobs();
+  } catch {
+    // Il Career Scanner e una fonte aggiuntiva: se un sito blocca il crawler
+    // non deve interrompere l'intero Job Agent.
+    companyCareerJobs = [];
+  }
+
+  const raw: Job[] = [
+    ...adzunaJobs,
+    ...joobleJobs,
+    ...companyCareerJobs,
+  ];
 
   const unique: StrictEvaluatedJob[] = dedupeCrossSource(raw)
     .map((job) => strictEvaluate(evaluate(job)))
@@ -348,7 +362,7 @@ export async function runAgent(options?: { reanalyze?: boolean }) {
       } catch {}
 
       const queuedJob: EvaluatedJob = {
-        source: row.source === "jooble" ? "jooble" : "adzuna",
+        source: row.source === "jooble" ? "jooble" : row.source === "company_careers" ? "company_careers" : "adzuna",
         sourceId: row.source_id,
         title: clean(row.title),
         company: clean(row.company),
@@ -673,6 +687,7 @@ export async function runAgent(options?: { reanalyze?: boolean }) {
     alreadySeen: alreadySeenCount,
     adzuna: adzunaJobs.length,
     jooble: joobleJobs.length,
+    companyCareers: companyCareerJobs.length,
     evaluated: results.length,
     top: topCount,
     review: reviewCount,

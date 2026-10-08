@@ -1,4 +1,4 @@
-export type JobSource = "adzuna" | "jooble";
+export type JobSource = "adzuna" | "jooble" | "company_careers";
 
 export type Job = {
   source: JobSource;
