@@ -48,19 +48,25 @@ export function getExtraCompanyTargets(): CompanyTarget[] {
   const raw = process.env.COMPANY_EXTRA_TARGETS?.trim();
   if (!raw) return [];
 
-  return raw
-    .split(";")
-    .map((entry) => entry.trim())
-    .filter(Boolean)
-    .map((entry) => {
-      const [name, website] = entry.split("|").map((x) => x?.trim());
-      if (!name || !website || !/^https?:\/\//i.test(website)) return null;
+  const out: CompanyTarget[] = [];
 
-      return {
-        name,
-        website,
-        category: "corporate" as const,
-      };
-    })
-    .filter((x): x is CompanyTarget => Boolean(x));
+  for (const rawEntry of raw.split(";")) {
+    const entry = rawEntry.trim();
+    if (!entry) continue;
+
+    const [rawName, rawWebsite] = entry.split("|");
+    const name = rawName?.trim();
+    const website = rawWebsite?.trim();
+
+    if (!name || !website) continue;
+    if (!/^https?:\/\//i.test(website)) continue;
+
+    out.push({
+      name,
+      website,
+      category: "corporate",
+    });
+  }
+
+  return out;
 }
