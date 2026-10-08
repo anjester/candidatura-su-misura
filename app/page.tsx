@@ -4,7 +4,7 @@ import { CheckCircle2, Clipboard, FileDown, Link2, LoaderCircle, Mail, Play, Sen
 
 type Result={title:string;company:string;score:number;emails:string[];recipient:string;requirements:string[];missing:string[];cvTemplate:string;cvTitle:string;cvSummary:string;cvSkills:string[];letter:string;subject:string;note:string};
 type AgentJob={source:string;title:string;company:string;score:number;status:string;band?:"top"|"review";email:string|null;url:string;gaps:string[]};
-type AgentResult={ok?:boolean;mode?:string;reanalyze?:boolean;found?:number;unique?:number;candidates?:number;alreadySeen?:number;evaluated?:number;top?:number;review?:number;skipped?:number;sent?:number;pending?:number;message?:string;results?:AgentJob[];error?:string;details?:string};
+type AgentResult={ok?:boolean;mode?:string;reanalyze?:boolean;found?:number;unique?:number;candidates?:number;alreadySeen?:number;evaluated?:number;top?:number;review?:number;skipped?:number;sent?:number;pending?:number;companyCareers?:number;message?:string;results?:AgentJob[];error?:string;details?:string};
 
 export default function Home(){
  const [url,setUrl]=useState("");const[pasted,setPasted]=useState("");const[tone,setTone]=useState("diretto");
@@ -25,7 +25,7 @@ export default function Home(){
    <span>AI</span>
    <div style={{width:"100%"}}>
     <strong>Job Agent automatico</strong>
-    <p>Ricerca Adzuna + Jooble, deduplica su Supabase e valutazione delle offerte. In modalità <b>review</b> non invia candidature.</p>
+    <p>Ricerca Adzuna + Jooble + Career Page aziendali, deduplica su Supabase e valutazione delle offerte. In modalità <b>review</b> non invia candidature.</p>
     <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:10}}>
      <button type="button" className="primary" onClick={()=>runAgent(false)} disabled={agentLoading||testSending} style={{width:"auto",marginTop:0}}>
       {agentLoading&&agentMode==="normal"?<><LoaderCircle size={18} className="spin"/>Eseguo ricerca…</>:<><Play size={18}/>Esegui agente ora</>}
@@ -42,7 +42,7 @@ export default function Home(){
       {agentResult.error?<div><p className="error">{agentResult.error}</p>{agentResult.details&&<pre style={{whiteSpace:"pre-wrap",marginTop:8,fontSize:12,lineHeight:1.4}}>{agentResult.details}</pre>}</div>:<>
        <div className="meta">
         <span>Modalità: <b>{agentResult.mode}</b></span>
-        <span>Trovati: <b>{agentResult.found ?? 0}</b></span>
+        <span>Trovati: <b>{agentResult.found ?? 0}</b></span><span>Career aziendali: <b>{agentResult.companyCareers ?? 0}</b></span>
         <span>Nuovi candidati: <b>{agentResult.candidates ?? 0}</b></span>
         <span>Già visti: <b>{agentResult.alreadySeen ?? 0}</b></span>
         <span>Analizzati: <b>{agentResult.evaluated ?? 0}</b></span>
