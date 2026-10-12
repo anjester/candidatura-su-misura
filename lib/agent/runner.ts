@@ -691,6 +691,7 @@ export async function runAgent(options?: { reanalyze?: boolean }) {
 
   return {
     ok: true,
+    buildVersion: "career-diagnostics-v1",
     mode,
     reanalyze,
     found: raw.length,
