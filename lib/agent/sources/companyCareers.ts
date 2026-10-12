@@ -6,6 +6,25 @@ import {
   type CompanyTarget,
 } from "../companyTargets";
 
+export type CompanyCareerDiagnostics = {
+  companiesSelected: number;
+  homePagesReadable: number;
+  careerPagesFound: number;
+  careerPagesReadable: number;
+  atsDetected: number;
+  relevantJobs: number;
+  blockedOrFailed: number;
+  scannedCompanies: string[];
+};
+
+type CompanyScanResult = {
+  jobs: Job[];
+  homeReadable: boolean;
+  careerPagesFound: number;
+  careerPagesReadable: number;
+  atsDetected: number;
+};
+
 const CAREER_HINT =
   /(careers?|jobs?|lavora[\s-]*con[\s-]*noi|lavoraconnoi|posizioni[\s-]*aperte|opportunit[aà]|work[\s-]*with[\s-]*us|join[\s-]*(us|our[\s-]*team)|vacanc(?:y|ies)|open[\s-]*positions?)/i;
 
@@ -320,9 +339,18 @@ function selectTargets(targets: CompanyTarget[], limit: number) {
   );
 }
 
-async function scanCompany(target: CompanyTarget): Promise<Job[]> {
+async function scanCompany(target: CompanyTarget): Promise<CompanyScanResult> {
   const home = await fetchHtml(target.website);
-  if (!home) return [];
+
+  if (!home) {
+    return {
+      jobs: [],
+      homeReadable: false,
+      careerPagesFound: 0,
+      careerPagesReadable: 0,
+      atsDetected: 0,
+    };
+  }
 
   const directJobs = jsonLdJobs(
     home.html,
@@ -332,7 +360,6 @@ async function scanCompany(target: CompanyTarget): Promise<Job[]> {
 
   const links = careerLinks(home.html, home.finalUrl);
 
-  // Se la homepage e gia una pagina career/ATS, analizzala direttamente.
   if (CAREER_HINT.test(home.finalUrl) || ATS_HOST.test(home.finalUrl)) {
     links.unshift({
       href: home.finalUrl,
@@ -342,14 +369,28 @@ async function scanCompany(target: CompanyTarget): Promise<Job[]> {
     });
   }
 
+  const selectedLinks = links
+    .filter(
+      (link, index, arr) =>
+        arr.findIndex((x) => x.href === link.href) === index
+    )
+    .slice(0, 2);
+
+  const atsDetected = selectedLinks.filter((link) =>
+    ATS_HOST.test(link.href)
+  ).length;
+
   const pages = await Promise.all(
-    links.slice(0, 2).map((link) => fetchHtml(link.href))
+    selectedLinks.map((link) => fetchHtml(link.href))
   );
 
   const jobs = [...directJobs];
+  let careerPagesReadable = 0;
 
   for (const page of pages) {
     if (!page) continue;
+
+    careerPagesReadable++;
 
     jobs.push(
       ...jsonLdJobs(page.html, page.finalUrl, target.name),
@@ -357,15 +398,36 @@ async function scanCompany(target: CompanyTarget): Promise<Job[]> {
     );
   }
 
-  return dedupe(jobs).slice(0, 12);
+  return {
+    jobs: dedupe(jobs).slice(0, 12),
+    homeReadable: true,
+    careerPagesFound: selectedLinks.length,
+    careerPagesReadable,
+    atsDetected,
+  };
 }
 
-export async function fetchCompanyCareerJobs(): Promise<Job[]> {
+export async function fetchCompanyCareerJobsWithDiagnostics(): Promise<{
+  jobs: Job[];
+  diagnostics: CompanyCareerDiagnostics;
+}> {
   if (
     String(process.env.COMPANY_CAREER_ENABLED || "true").toLowerCase() ===
     "false"
   ) {
-    return [];
+    return {
+      jobs: [],
+      diagnostics: {
+        companiesSelected: 0,
+        homePagesReadable: 0,
+        careerPagesFound: 0,
+        careerPagesReadable: 0,
+        atsDetected: 0,
+        relevantJobs: 0,
+        blockedOrFailed: 0,
+        scannedCompanies: [],
+      },
+    };
   }
 
   const scanLimit = Math.min(
@@ -380,7 +442,17 @@ export async function fetchCompanyCareerJobs(): Promise<Job[]> {
 
   const selected = selectTargets(allTargets, scanLimit);
 
-  // Parallelismo limitato: pochi siti per run per restare sotto i limiti Vercel.
+  const diagnostics: CompanyCareerDiagnostics = {
+    companiesSelected: selected.length,
+    homePagesReadable: 0,
+    careerPagesFound: 0,
+    careerPagesReadable: 0,
+    atsDetected: 0,
+    relevantJobs: 0,
+    blockedOrFailed: 0,
+    scannedCompanies: selected.map((x) => x.name),
+  };
+
   const batches: CompanyTarget[][] = [];
   for (let i = 0; i < selected.length; i += 3) {
     batches.push(selected.slice(i, i + 3));
@@ -390,8 +462,29 @@ export async function fetchCompanyCareerJobs(): Promise<Job[]> {
 
   for (const batch of batches) {
     const results = await Promise.all(batch.map(scanCompany));
-    results.forEach((group) => jobs.push(...group));
+
+    for (const result of results) {
+      jobs.push(...result.jobs);
+
+      if (result.homeReadable) diagnostics.homePagesReadable++;
+      else diagnostics.blockedOrFailed++;
+
+      diagnostics.careerPagesFound += result.careerPagesFound;
+      diagnostics.careerPagesReadable += result.careerPagesReadable;
+      diagnostics.atsDetected += result.atsDetected;
+    }
   }
 
-  return dedupe(jobs);
+  const deduped = dedupe(jobs);
+  diagnostics.relevantJobs = deduped.length;
+
+  return {
+    jobs: deduped,
+    diagnostics,
+  };
+}
+
+export async function fetchCompanyCareerJobs(): Promise<Job[]> {
+  const result = await fetchCompanyCareerJobsWithDiagnostics();
+  return result.jobs;
 }
