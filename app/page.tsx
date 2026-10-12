@@ -4,7 +4,8 @@ import { CheckCircle2, Clipboard, FileDown, Link2, LoaderCircle, Mail, Play, Sen
 
 type Result={title:string;company:string;score:number;emails:string[];recipient:string;requirements:string[];missing:string[];cvTemplate:string;cvTitle:string;cvSummary:string;cvSkills:string[];letter:string;subject:string;note:string};
 type AgentJob={source:string;title:string;company:string;score:number;status:string;band?:"top"|"review";email:string|null;url:string;gaps:string[]};
-type AgentResult={ok?:boolean;mode?:string;reanalyze?:boolean;found?:number;unique?:number;candidates?:number;alreadySeen?:number;evaluated?:number;top?:number;review?:number;skipped?:number;sent?:number;pending?:number;companyCareers?:number;message?:string;results?:AgentJob[];error?:string;details?:string};
+type CareerDiagnostics={companiesSelected:number;homePagesReadable:number;careerPagesFound:number;careerPagesReadable:number;atsDetected:number;relevantJobs:number;blockedOrFailed:number;scannedCompanies:string[]};
+type AgentResult={ok?:boolean;mode?:string;reanalyze?:boolean;found?:number;unique?:number;candidates?:number;alreadySeen?:number;evaluated?:number;top?:number;review?:number;skipped?:number;sent?:number;pending?:number;companyCareers?:number;careerDiagnostics?:CareerDiagnostics;message?:string;results?:AgentJob[];error?:string;details?:string};
 
 export default function Home(){
  const [url,setUrl]=useState("");const[pasted,setPasted]=useState("");const[tone,setTone]=useState("diretto");
@@ -51,6 +52,19 @@ export default function Home(){
         <span>Scartati: <b>{agentResult.skipped ?? 0}</b></span>
         <span>Mail inviate: <b>{agentResult.sent ?? 0}</b></span><span>In coda: <b>{agentResult.pending ?? 0}</b></span>
        </div>
+       {agentResult.careerDiagnostics&&<div className="notice" style={{marginTop:10}}>
+        <strong>Diagnostica Career Scanner</strong>
+        <div className="meta" style={{marginTop:8}}>
+         <span>Aziende scansionate: <b>{agentResult.careerDiagnostics.companiesSelected}</b></span>
+         <span>Homepage leggibili: <b>{agentResult.careerDiagnostics.homePagesReadable}</b></span>
+         <span>Career page trovate: <b>{agentResult.careerDiagnostics.careerPagesFound}</b></span>
+         <span>Career page leggibili: <b>{agentResult.careerDiagnostics.careerPagesReadable}</b></span>
+         <span>ATS rilevati: <b>{agentResult.careerDiagnostics.atsDetected}</b></span>
+         <span>Annunci pertinenti: <b>{agentResult.careerDiagnostics.relevantJobs}</b></span>
+         <span>Errori/blocchi: <b>{agentResult.careerDiagnostics.blockedOrFailed}</b></span>
+        </div>
+        {agentResult.careerDiagnostics.scannedCompanies?.length>0&&<p style={{marginTop:8,fontSize:12}}>Oggi: {agentResult.careerDiagnostics.scannedCompanies.join(" · ")}</p>}
+       </div>}
        {agentResult.message&&<p className="notice" style={{marginTop:10}}>{agentResult.message}</p>}
        {(agentResult.results?.length??0)>0&&<>
         {(agentResult.results?.some(j=>j.band==="top")??false)&&<div style={{marginTop:16}}>
