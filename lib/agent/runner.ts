@@ -1,7 +1,7 @@
 import type { Job, EvaluatedJob } from "./types";
 import { fetchAdzunaJobs } from "./sources/adzuna";
 import { fetchJoobleJobs } from "./sources/jooble";
-import { fetchCompanyCareerJobs } from "./sources/companyCareers";
+import { fetchCompanyCareerJobsWithDiagnostics, type CompanyCareerDiagnostics } from "./sources/companyCareers";
 import { buildApplication, evaluate } from "./scoring";
 import { enrichFromJobPage } from "./web";
 import {
@@ -246,6 +246,16 @@ export async function runAgent(options?: { reanalyze?: boolean }) {
   let adzunaJobs: Job[] = [];
   let joobleJobs: Job[] = [];
   let companyCareerJobs: Job[] = [];
+  let careerDiagnostics: CompanyCareerDiagnostics = {
+    companiesSelected: 0,
+    homePagesReadable: 0,
+    careerPagesFound: 0,
+    careerPagesReadable: 0,
+    atsDetected: 0,
+    relevantJobs: 0,
+    blockedOrFailed: 0,
+    scannedCompanies: [],
+  };
 
   try {
     adzunaJobs = await fetchAdzunaJobs();
@@ -264,11 +274,13 @@ export async function runAgent(options?: { reanalyze?: boolean }) {
   }
 
   try {
-    companyCareerJobs = await fetchCompanyCareerJobs();
+    const companyResult = await fetchCompanyCareerJobsWithDiagnostics();
+    companyCareerJobs = companyResult.jobs;
+    careerDiagnostics = companyResult.diagnostics;
   } catch {
-    // Il Career Scanner e una fonte aggiuntiva: se un sito blocca il crawler
-    // non deve interrompere l'intero Job Agent.
     companyCareerJobs = [];
+    careerDiagnostics.blockedOrFailed =
+      careerDiagnostics.companiesSelected || 1;
   }
 
   const raw: Job[] = [
@@ -688,6 +700,7 @@ export async function runAgent(options?: { reanalyze?: boolean }) {
     adzuna: adzunaJobs.length,
     jooble: joobleJobs.length,
     companyCareers: companyCareerJobs.length,
+    careerDiagnostics,
     evaluated: results.length,
     top: topCount,
     review: reviewCount,
