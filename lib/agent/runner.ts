@@ -670,28 +670,36 @@ export async function runAgent(options?: { reanalyze?: boolean }) {
     ? await countPendingJobs()
     : 0;
 
-  if (!reanalyze && mode === "auto" && notifyRecipient && sentItems.length > 0) {
+  if (!reanalyze && mode === "auto" && notifyRecipient) {
     try {
       const lines = sentItems.map(
         (item, i) =>
           `${i + 1}. ${item.company} - ${item.title} (${item.score}%) -> ${item.recipient}`
       );
 
+      const sentDetail =
+        lines.length > 0
+          ? `\n\n${lines.join("\n")}`
+          : "\n\nNessuna candidatura inviata in questo run.";
+
       await smtpNotify({
         to: notifyRecipient,
-        subject: `Job Agent - ${sentItems.length} candidature inviate, ${pending} in coda`,
+        subject: `Job Agent - run completato - ${sentItems.length} inviate, ${pending} in coda`,
         message:
           `Riepilogo del run automatico.\n\n` +
           `Mail inviate: ${sentItems.length}\n` +
-          `In coda: ${pending}\n\n` +
-          lines.join("\n"),
+          `In coda: ${pending}\n` +
+          `Annunci trovati: ${raw.length}\n` +
+          `Career aziendali: ${companyCareerJobs.length}\n` +
+          `Aziende scansionate: ${careerDiagnostics.companiesSelected}\n` +
+          `Errori/blocchi career: ${careerDiagnostics.blockedOrFailed}` +
+          sentDetail,
       });
     } catch {}
   }
 
   return {
     ok: true,
-    buildVersion: "career-diagnostics-v1",
     mode,
     reanalyze,
     found: raw.length,
